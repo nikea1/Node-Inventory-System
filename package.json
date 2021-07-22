@@ -1,0 +1,29 @@
+{
+  "name": "node-inventory-system",
+  "version": "1.0.0",
+  "description": "Node inventory system for my card collection",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nikea1/Node-Inventory-System.git"
+  },
+  "keywords": [
+    "node",
+    "MySQL",
+    "CLI"
+  ],
+  "author": "Adenike Adeyemi",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/nikea1/Node-Inventory-System/issues"
+  },
+  "homepage": "https://github.com/nikea1/Node-Inventory-System#readme",
+  "dependencies": {
+    "axios": "^0.21.1",
+    "commander": "^8.0.0",
+    "mysql2": "^2.2.5"
+  }
+}
