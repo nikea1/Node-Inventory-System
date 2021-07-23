@@ -91,6 +91,15 @@ function closeDB(){
 // }
 
 // Card.number, Card.name, color, type, rarity
+// function Select(values,tables,conditions, joins=""){
+// 	q = values.concat(tables, conditions.qarr)
+// 	sqlobj={
+// 		sql: "SELECT ?? FROM ??" + joins + conditions.fstr,
+// 		values: q
+// 	}
+// 	console.log(sqlobj);
+// }
+
 function SelectCard(options){
 	sqlobj = {
 		sql: "SELECT Card.* FROM Card JOIN CardSet ON CardSet.id = cardSetId"+options.fstr,
@@ -170,6 +179,49 @@ function CountCards(options){
 		if(err) console.log(err)
 
 		console.log(rows);
+		closeDB();
+	})
+}
+
+function InsertCard(values){
+	sqlobj = {
+		sql: "INSERT INTO Card SET ?"+
+		" , cardSetId = (SELECT CardSet.id FROM CardSet WHERE CardSet.number =  ?)",
+		values: values
+	}
+	console.log(sqlobj)
+	connection.query(sqlobj,(err,res,fields)=>{
+		if(err) console.log(err)
+
+		console.log(res);
+		closeDB();
+	})
+}
+
+function InsertCardSet(values){
+	sqlobj = {
+		sql: "INSERT INTO CardSet SET ?",
+		values: values
+	}
+	console.log(sqlobj)
+	connection.query(sqlobj,(err,res,fields)=>{
+		if(err) console.log(err)
+
+		console.log(res);
+		closeDB();
+	})
+}
+
+function InsertLocation(values){
+	sqlobj = {
+		sql: "INSERT INTO Location SET ?",
+		values:values
+	}
+	console.log(sqlobj)
+	connection.query(sqlobj,(err,res,fields)=>{
+		if(err) console.log(err)
+
+		console.log(res);
 		closeDB();
 	})
 }
@@ -287,11 +339,15 @@ program
 program.parse(process.argv);
 
 const options = program.opts();
+// Select(["name", "number"], ["Card"], {fstr: " WHERE (name = ?)", qarr:["Agumon"]}," JOIN CardSet ON 1 = 1")
 
-//Search mode / Read
+//Search mode / Read / Done
 if(options.search && !options.edit && !options.add && !options.count && !options.move && !options.remove){
 	console.log("S",options.search)
-	RunSearchQuery(options.search, options)
+	if(options.search == "Card"|| options.search == "CardLocation" || options.search == "CardSet" || options.search == "Location")
+		RunSearchQuery(options.search, options)
+	else
+		console.log("error: No table was specified.")
 }	
 //Edit mode / Update
 else if(!options.search && options.edit && !options.add && !options.count && !options.move && !options.remove){
@@ -301,9 +357,37 @@ else if(!options.search && options.edit && !options.add && !options.count && !op
 //Add mode / Create
 else if(!options.search && !options.edit && options.add && !options.count && !options.move && !options.remove){
 	console.log("A",options.add)
+	console.log(options)
+	if(options.add == "Card")
+	{
+		values = {}
+		qarr = []
+		for (let o in options){
+			switch(o){
+				case "cardNumber":
+					values["number"] = options[o][0]
+				break;
+				case "cardName":
+					values["name"] = options[o][0]
+					break;
+				case "type":
+				case "color":
+				case "rarity":
+					values[o] = options[o][0];
+					break;
+	
+		
+			}
+		}
+		qarr = [values, values["number"].split("-")[0]]
+		// console.log(qarr)
+		InsertCard(qarr)
+	}
+	else if(options.add == "Location"){
 
+	}
 }
-//Count mode / Read
+//Count mode / Read / Done
 else if(!options.search && !options.edit && !options.add && options.count && !options.move && !options.remove){
 	console.log("C",options.count)
 	RunCountQuery(options)
@@ -323,19 +407,5 @@ else{
 	console.log("oops")
 }
 
-//Test Query
-// SelectCard({fstr:" WHERE Card.name = ?", qarr:["Agumon"]});
-// connection.query("SELECT * FROM CARD WHERE name = 'Agumon'", (err, rows, fields)=>{
-// 	if(err){
-// 		console.log(err.stack)
-// 	}
-// 	console.log(rows)
-// 	connection.end((err)=>{
-// 		if(err){
-// 			console.error("error connecting: "+err.stack);
-// 			return;
-// 		}
-// 		console.log("DB closing");
-// 	})
-// })
+
 
