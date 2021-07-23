@@ -54,7 +54,7 @@ Queries
 		R table -c -l	(cardNumber, LocationID)=> {}
 
 */
-// var connection = require("./config/config.js");
+var connection = require("./config/config.js");
 var axios = require("axios");
 const { Command } = require('commander');
 const program = new Command();
@@ -95,9 +95,26 @@ function SelectCard(options){
 	sqlobj = {
 		sql: "SELECT Card.* FROM Card JOIN CardSet ON CardSet.id = cardSetId"+options.fstr,
 		values: options.qarr,
-		nestTables: true,
+		// nestTables: true,
 
 	}
+	// console.log(sqlobj);
+
+	connection.query(sqlobj,(err,rows,fields)=>{
+		if(err) console.log(err)
+
+		console.log(rows);
+		closeDB();
+	})
+}
+
+function SelectCardSet(options){
+	sqlobj = {
+		sql: "SELECT number, name FROM CardSet"+ options.fstr,
+		values: options.qarr
+	}
+	console.log(sqlobj);
+
 	connection.query(sqlobj,(err,rows,fields)=>{
 		if(err) console.log(err)
 
@@ -111,6 +128,8 @@ function SelectLocation(options){
 		sql: "SELECT * FROM Location" + options.fstr,
 		values:options.qarr,
 	}
+		console.log(sqlobj);
+
 	connection.query(sqlobj,(err,rows,fields)=>{
 		if(err) console.log(err)
 
@@ -127,6 +146,8 @@ function SelectCardFromLocation(options){
 		"JOIN CardSet ON CardSet.Id = cardSetId" + options.fstr,
 		values:options.qarr
 	}
+
+	console.log(sqlobj);
 	connection.query(sqlobj,(err,rows,fields)=>{
 		if(err) console.log(err)
 
@@ -134,6 +155,23 @@ function SelectCardFromLocation(options){
 		closeDB();
 	})
 
+}
+
+function CountCards(options){
+	sqlobj = {
+		sql: "SELECT SUM(quantity) FROM CardLocation "+
+		"JOIN Location ON locationId = Location.id "+
+		"JOIN Card ON Card.number = cardNumber "+
+		"JOIN CardSet ON CardSet.Id = cardSetId" + options.fstr,
+		values:options.qarr
+	}
+	console.log(sqlobj)
+	connection.query(sqlobj,(err,rows,fields)=>{
+		if(err) console.log(err)
+
+		console.log(rows);
+		closeDB();
+	})
 }
 
 function helperOpts(queryString, query){
@@ -159,15 +197,82 @@ function buildQuery(qobj,queryString, query){
 	return qobj;
 }
 
+
+function OptionSwitch(mode, options){
+	qobj = {fstr: "", qarr:[]};
+	for (let o in options){
+				
+		switch(o){
+			case "boosterCode":
+				if(mode == "Card" || mode == "CardSet" || mode == "CardLocation")
+					qobj = buildQuery(qobj, "CardSet.number = ?", options[o])
+				break;
+			case "boosterName":
+				if(mode == "Card" || mode == "CardSet" || mode == "CardLocation")
+					qobj = buildQuery(qobj, "CardSet.name LIKE CONCAT('%',?,'%')", options[o])
+				break;
+			case "cardNumber":
+				if(mode == "Card" || mode == "CardLocation")
+					qobj = buildQuery(qobj, "Card.number = ?", options[o])
+				break;
+			case "cardName":
+				if(mode == "Card" || mode == "CardLocation")
+					qobj = buildQuery(qobj, "Card.name = ?", options[o])
+				break;
+			case "type":
+				if(mode == "Card" || mode == "CardLocation")
+					qobj = buildQuery(qobj, "type = ?", options[o])
+				break;
+			case "color":
+				if(mode == "Card" || mode == "CardLocation")
+					qobj = buildQuery(qobj, "color = ?", options[o])
+				break;
+			case "rarity":
+				if(mode == "Card" || mode == "CardLocation")
+					qobj = buildQuery(qobj, "rarity = ?", options[o])
+				break;
+			case "location":
+				if(mode == "Location" || mode == "CardLocation")
+					qobj = buildQuery(qobj, "locationName = ?", options[o])
+				break;
+
+		}//end of switch
+	}
+	return qobj;
+}
+
+function RunSearchQuery(mode, options){
+	qobj = OptionSwitch(mode, options);
+	if(qobj.fstr != "" && qobj.qarr != [])
+		qobj.fstr = " WHERE " + qobj.fstr;
+	if(mode == "Card")
+		SelectCard(qobj)
+	else if(mode == "Location")
+		SelectLocation(qobj)
+	else if(mode == "CardLocation")
+		SelectCardFromLocation(qobj)
+	else if(mode == "CardSet")
+		SelectCardSet(qobj)
+
+}
+
+function RunCountQuery(options){
+	qobj = OptionSwitch("CardLocation", options);
+	if(qobj.fstr != "" && qobj.qarr != [])
+		qobj.fstr = " WHERE " + qobj.fstr;
+	CountCards(qobj);
+
+}
+
 program
 	.usage('<mode> table [options]')
 	//modes only pick one
-	.option('-S, --search <table>', 'search card mode') //R
-	.option('-E, --edit <table> ', 'find card in location mode')//R
-	.option('-C, --count', 'count card mode')//R
-	.option('-A, --add <table>', 'add card mode')//C
+	.option('-S, --search <table>', 'search card mode') //R Done
+	.option('-E, --edit <table> ', 'edit attribute information of a table')//U
+	.option('-C, --count', 'count card mode')//R Done
+	.option('-A, --add <table>', 'add entries to a table')//C
 	.option('-M, --move', 'move card in inventory')//U
-	.option('-R, --remove <table>', 'remove card from inventory')//D
+	.option('-R, --remove <table>', 'remove card from inventory')//D should have warning in place
 	//attributes
 	.option('-b, --boosterCode <code...>', 'filter by booster pack / starter deck code. Ex. BT3, ST5.')
 	.option('-B, --boosterName <name...>', 'filter by booster pack / starter deck exact name.')
@@ -183,136 +288,32 @@ program.parse(process.argv);
 
 const options = program.opts();
 
-//Search mode
+//Search mode / Read
 if(options.search && !options.edit && !options.add && !options.count && !options.move && !options.remove){
 	console.log("S",options.search)
-	qobj = {fstr:"", qarr:[]}
-	switch(options.search){
-		
-
-		case "Card":
-
-			for (let o in options){
-				
-				switch(o){
-					case "boosterCode":
-						qobj = buildQuery(qobj, "cs.number = ?", options[o])
-						break;
-					case "boosterName":
-						qobj = buildQuery(qobj, "cs.name LIKE %?%", options[o])
-						break;
-					case "cardNumber":
-						qobj = buildQuery(qobj, "c.number = ?", options[o])
-						break;
-					case "cardName":
-						qobj = buildQuery(qobj, "c.name = ?", options[o])
-						break;
-					case "type":
-						qobj = buildQuery(qobj, "type = ?", options[o])
-						break;
-					case "color":
-						qobj = buildQuery(qobj, "color = ?", options[o])
-						break;
-					case "rarity":
-						qobj = buildQuery(qobj, "rarity = ?", options[o])
-						break;
-					case "location":
-						qobj = buildQuery(qobj, "locationName = ?", options[o])
-						break;
-				}//end of switch
-			}		
-
-		break;
-		case "CardSet":
-				// qobj = {fstr:"", qarr:[]}
-
-			for (let o in options){
-				// console.log(options[o])
-				
-				switch(o){
-					case "boosterCode":
-						qobj = buildQuery(qobj, "cs.number = ?", options[o])
-						break;
-					case "boosterName":
-						qobj = buildQuery(qobj, "cs.name LIKE %?%", options[o])
-						break;
-				}//end of switch
-			}		
-
-		break;
-		case "Location":
-				// qobj = {fstr:"", qarr:[]}
-
-			for (let o in options){
-				switch(o){
-					case "location":
-						qobj = buildQuery(qobj, "locationName = ?", options[o])
-					break;
-				}
-			}
-					
-
-		break;
-		case "CardLocation":
-				// qobj = {fstr:"", qarr:[]}
-
-			for (let o in options){
-				switch(o){
-					case "boosterCode":
-						qobj = buildQuery(qobj, "cs.number = ?", options[o])
-						break;
-					case "boosterName":
-						qobj = buildQuery(qobj, "cs.name LIKE %?%", options[o])
-						break;
-					case "cardNumber":
-						qobj = buildQuery(qobj, "c.number = ?", options[o])
-						break;
-					case "cardName":
-						qobj = buildQuery(qobj, "c.name = ?", options[o])
-						break;
-					case "type":
-						qobj = buildQuery(qobj, "type = ?", options[o])
-						break;
-					case "color":
-						qobj = buildQuery(qobj, "color = ?", options[o])
-						break;
-					case "rarity":
-						qobj = buildQuery(qobj, "rarity = ?", options[o])
-						break;
-					case "location":
-						qobj = buildQuery(qobj, "locationName = ?", options[o])
-						break;
-				}//end of switch
-			}
-			
-
-		break;
-		
-
-	}//mode switch
-	console.log(qobj)
+	RunSearchQuery(options.search, options)
 }	
-//Edit mode
+//Edit mode / Update
 else if(!options.search && options.edit && !options.add && !options.count && !options.move && !options.remove){
 	console.log("E",options.edit)
 
 }
-//Add mode
+//Add mode / Create
 else if(!options.search && !options.edit && options.add && !options.count && !options.move && !options.remove){
 	console.log("A",options.add)
 
 }
-//Count mode
+//Count mode / Read
 else if(!options.search && !options.edit && !options.add && options.count && !options.move && !options.remove){
 	console.log("C",options.count)
-
+	RunCountQuery(options)
 }
-//Move mode
+//Move mode / Update
 else if(!options.search && !options.edit && !options.add && !options.count && options.move && !options.remove){
 	console.log("M",options.move)
 
 }
-//Remove mode
+//Remove mode / Delete
 else if(!options.search && !options.edit && !options.add && !options.count && !options.move && options.remove){
 	console.log("R",options.remove)
 
