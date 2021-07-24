@@ -67,6 +67,8 @@ RARITY = {
 	"Super Rare": "SR",
 	"Secret": "SEC",
 }
+
+
 // Commander + Axios + MySQL2
 
 function closeDB(){
@@ -198,6 +200,33 @@ function InsertCard(values){
 	})
 }
 
+function InsertCard2(cardNumber){
+	var config = {
+	  method: 'get',
+	  // url: 'https://digimoncard.io/api-public/search.php?n=Agumon&desc=Reveal 5 cards&color=red&type=digimon&attribute=Vaccine&card=BT1-010&pack=BT01-03: Release Special Booster Ver.1.0&sort=name&sortdirection=desc&series=Digimon Card Game',
+	  url: 'https://digimoncard.io/api-public/search.php',
+	  headers: { },
+	  params:{card:cardNumber, series:"Digimon Card Game"}
+	};
+	axios(config)
+.then(function (response) {
+	data = {
+		number: response.data[0].cardnumber,
+		name: response.data[0].name,
+		color: response.data[0].color,
+		type: response.data[0].type,
+		rarity: RARITY[response.data[0].cardrarity] ? RARITY[response.data[0].cardrarity] : null,
+		
+	}
+	 console.log(data)
+	InsertCard([data, data['number'].split('-')[0]])
+})
+.catch(function (error) {
+  console.log(error);
+  console.log("Connection")
+});
+}
+
 function InsertCardSet(values){
 	sqlobj = {
 		sql: "INSERT INTO CardSet SET ?",
@@ -216,6 +245,20 @@ function InsertLocation(values){
 	sqlobj = {
 		sql: "INSERT INTO Location SET ?",
 		values:values
+	}
+	console.log(sqlobj)
+	connection.query(sqlobj,(err,res,fields)=>{
+		if(err) console.log(err)
+
+		console.log(res);
+		closeDB();
+	})
+}
+
+function InsertCardIntoLocation(values){
+	sqlobj = {
+		sql:"INSERT INTO CardLocation SET ?",
+		values: values
 	}
 	console.log(sqlobj)
 	connection.query(sqlobj,(err,res,fields)=>{
@@ -335,6 +378,8 @@ program
 	.option('-r, --rarity <rarity...>', 'filter by rarity.')
 	.option('-l, --location <loc...>', 'filter by location.')
 	.option('-q, --quantity <number>', 'how many cards to Add, update, move, or remove')
+	.option('-i, --internet', 'For add Card only, uses internet to populate Card information')
+	.option('-f, --file', 'Use file to provide information')
 
 program.parse(process.argv);
 
@@ -354,37 +399,89 @@ else if(!options.search && options.edit && !options.add && !options.count && !op
 	console.log("E",options.edit)
 
 }
-//Add mode / Create
+//Add mode / Create / Testing Needed
 else if(!options.search && !options.edit && options.add && !options.count && !options.move && !options.remove){
 	console.log("A",options.add)
 	console.log(options)
+	//Add new Cards/ Card number required / Done
 	if(options.add == "Card")
 	{
-		values = {}
-		qarr = []
-		for (let o in options){
-			switch(o){
-				case "cardNumber":
-					values["number"] = options[o][0]
-				break;
-				case "cardName":
-					values["name"] = options[o][0]
-					break;
-				case "type":
-				case "color":
-				case "rarity":
-					values[o] = options[o][0];
-					break;
-	
-		
-			}
+		//Use Axios to add card to database
+		if(options.internet && options.cardNumber){
+			InsertCard2(options['cardNumber'][0])
 		}
-		qarr = [values, values["number"].split("-")[0]]
-		// console.log(qarr)
-		InsertCard(qarr)
-	}
+		else{
+			values = {}
+			//User provided information
+			if(options.cardNumber){
+				qarr = []
+				for (let o in options){
+					switch(o){
+						case "cardNumber":
+							values["number"] = options[o][0]
+						break;
+						case "cardName":
+							values["name"] = options[o][0]
+							break;
+						case "type":
+						case "color":
+						case "rarity":
+							values[o] = options[o][0];
+							break;
+			
+				
+					}//switch
+				}//for
+				qarr = [values, values["number"].split("-")[0]]
+				// console.log(qarr)
+				InsertCard(qarr)
+			}//if
+			else{
+				console.log("Error: Must provide card number")
+			}//else
+		}//else
+		
+	}//Card
+	//Add new Location/Need Location Name/ Testing
 	else if(options.add == "Location"){
+		// values = {}
+		qarr = []
+		if(options.location){
+			values["locationName"] = options["location"][0];
+			InsertLocation([values])
+		}
+		else{
+			console.log("Error: location was not given.")
+		}
+	}
+	//Add new CardSet /need Card Set number/ Testing
+	else if(options.add == "CardSet"){
+		
+		if(options.boosterNumber){
+			values["number"] = options['boosterCode'][0]
+		
+			if(options.boosterName)
+				values['name'] = options['boosterName'][0]
 
+			
+			InsertCardSet([values])
+		}
+		else{
+			console.log("Error: Must provide boosterCode/Cardset Number")
+		}
+	}
+	//Add new Card into a Location / Need Card number, Location Id, quantity / Testing
+	else if(options.add == "CardLocation"){
+		if(options.cardNumber && options.location && options.quantity){
+			values['cardNumber'] = options['cardNumber'][0]
+			values['locationId'] = options['location'][0]
+			values['quantity'] = options['quantity'][0]
+
+			InsertCardIntoLocation([values])
+		}
+		else{
+			console.log("Error: Must provide card Number, location Id, and quantity. ")
+		}
 	}
 }
 //Count mode / Read / Done
