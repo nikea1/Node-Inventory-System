@@ -15,7 +15,8 @@ Method two:
 Queries
 	Card:
 		Insert new card 
-			//With internet
+			//With internet csv-parser?
+
 		A table -c		(cardNumber) => Put{cardNumber, cardName, cardColor, cardType, cardRarity, CardSetNumber}
 			//without internet
 		A table -...	(cardNumber, cardName, cardColor, cardType, cardRarity) => Put{cardNumber, cardName, cardColor, cardType, cardRarity, cardSetNumber}
@@ -56,6 +57,8 @@ Queries
 */
 var connection = require("./config/config.js");
 var axios = require("axios");
+const fs = require("fs"), rl = require("readline");
+
 const { Command } = require('commander');
 const program = new Command();
 program.version('0.0.1');
@@ -81,91 +84,51 @@ function closeDB(){
 	})
 }
 
-
-// function SelectAll(table){
-// 	connection.query("SELECT ??.* FROM ??",table, (err, rows, fields)=>{
-// 		if(err) console.log(err)
-
-// 		console.log(rows);
-// 		closeDB();
-
-// 	})
-// }
-
-// Card.number, Card.name, color, type, rarity
-// function Select(values,tables,conditions, joins=""){
-// 	q = values.concat(tables, conditions.qarr)
-// 	sqlobj={
-// 		sql: "SELECT ?? FROM ??" + joins + conditions.fstr,
-// 		values: q
-// 	}
-// 	console.log(sqlobj);
-// }
-
-function SelectCard(options){
-	sqlobj = {
-		sql: "SELECT Card.* FROM Card JOIN CardSet ON CardSet.id = cardSetId"+options.fstr,
-		values: options.qarr,
-		// nestTables: true,
-
-	}
-	// console.log(sqlobj);
-
-	connection.query(sqlobj,(err,rows,fields)=>{
-		if(err) console.log(err)
-
-		console.log(rows);
-		closeDB();
-	})
+function InnerJoin(table1, table2, attr1, attr2){
+	if(!table1 || !table2 || !attr1 || !attr2)
+		return ""
+	return " JOIN "+table2+" ON "+table1+"."+attr1+" = "+table2+"."+attr2
 }
 
-function SelectCardSet(options){
-	sqlobj = {
-		sql: "SELECT number, name FROM CardSet"+ options.fstr,
-		values: options.qarr
+function Select(col,from, where=null, join=null){
+	if(!col || !from)
+		return null;
+	qobj = {}
+	jstr = ""
+
+	//if join is a String
+	if(typeof join === 'string' || join instanceof String){
+		jstr = join;
 	}
-	console.log(sqlobj);
-
-	connection.query(sqlobj,(err,rows,fields)=>{
-		if(err) console.log(err)
-
-		console.log(rows);
-		closeDB();
-	})
-}
-
-function SelectLocation(options){
-	sqlobj = {
-		sql: "SELECT * FROM Location" + options.fstr,
-		values:options.qarr,
+	//of join is an object
+	else if(join && join.table1 && join.table2 && join.attr1 && join.attr2){
+		jstr = " JOIN "+join.table2+" ON "+join.table1+"."+join.attr1+" = "+join.table2+"."+join.attr2;
 	}
-		console.log(sqlobj);
-
-	connection.query(sqlobj,(err,rows,fields)=>{
-		if(err) console.log(err)
-
-		console.log(rows);
-		closeDB();
-	})
-}
-
-function SelectCardFromLocation(options){
-	sqlobj = {
-		sql: "SELECT CardLocation.quantity, Card.number, Card.name, color, type, rarity, locationName FROM CardLocation "+
-		"JOIN Location ON locationId = Location.id "+
-		"JOIN Card ON Card.number = cardNumber "+
-		"JOIN CardSet ON CardSet.Id = cardSetId" + options.fstr,
-		values:options.qarr
+	//if join is a list of objects
+	else if(Array.isArray(join)){
+		join.forEach((j)=>{
+			if(j && j.table1 && j.table2 && j.attr1 && j.attr2){
+				jstr += " JOIN "+j.table2+" ON "+j.table1+"."+j.attr1+" = "+j.table2+"."+j.attr2;
+			}
+			else if(typeof j === 'string' || j instanceof String){
+				jstr += j;
+			}
+			else{
+				console.log("Warning: Found an unprepared join object.")
+			}
+		})
 	}
+	
+	
 
-	console.log(sqlobj);
-	connection.query(sqlobj,(err,rows,fields)=>{
-		if(err) console.log(err)
-
-		console.log(rows);
-		closeDB();
-	})
-
+	qobj["sql"] = "SELECT ?? FROM ??"+jstr+(where && where.fstr ? where.fstr : "")
+	qobj["values"] = []
+	qobj.values.push(col);
+	qobj.values.push(from);
+	if(where && where.qarr)
+		qobj.values = qobj.values.concat(where.qarr);
+	return qobj;
+	
 }
 
 function CountCards(options){
@@ -189,6 +152,8 @@ function InsertCard(values){
 	sqlobj = {
 		sql: "INSERT INTO Card SET ?"+
 		" , cardSetId = (SELECT CardSet.id FROM CardSet WHERE CardSet.number =  ?)",
+		// sql: "INSERT INTO Card SET Card.number = ?, Card.name = ?, color = ?, type = ?, rarity = ?, CardsetId = (SELECT CardSet.id FROM CardSet WHERE CardSet.number =  ?)",
+		// sql: "INSERT INTO Card (Card.number, Card.name, color, type, rarity, cardSetId) VALUES ?",
 		values: values
 	}
 	console.log(sqlobj)
@@ -209,22 +174,22 @@ function InsertCard2(cardNumber){
 	  params:{card:cardNumber, series:"Digimon Card Game"}
 	};
 	axios(config)
-.then(function (response) {
-	data = {
-		number: response.data[0].cardnumber,
-		name: response.data[0].name,
-		color: response.data[0].color,
-		type: response.data[0].type,
-		rarity: RARITY[response.data[0].cardrarity] ? RARITY[response.data[0].cardrarity] : null,
-		
-	}
-	 console.log(data)
-	InsertCard([data, data['number'].split('-')[0]])
-})
-.catch(function (error) {
-  console.log(error);
-  console.log("Connection")
-});
+	.then(function (response) {
+		data = {
+			number: response.data[0].cardnumber,
+			name: response.data[0].name,
+			color: response.data[0].color,
+			type: response.data[0].type,
+			rarity: RARITY[response.data[0].cardrarity] ? RARITY[response.data[0].cardrarity] : null,
+			
+		}
+		 console.log(data)
+		InsertCard([data, data['number'].split('-')[0]])
+	})
+	.catch(function (error) {
+	  console.log(error);
+	  console.log("Connection")
+	});
 }
 
 function InsertCardSet(values){
@@ -340,14 +305,33 @@ function RunSearchQuery(mode, options){
 	qobj = OptionSwitch(mode, options);
 	if(qobj.fstr != "" && qobj.qarr != [])
 		qobj.fstr = " WHERE " + qobj.fstr;
-	if(mode == "Card")
-		SelectCard(qobj)
-	else if(mode == "Location")
-		SelectLocation(qobj)
-	else if(mode == "CardLocation")
-		SelectCardFromLocation(qobj)
-	else if(mode == "CardSet")
-		SelectCardSet(qobj)
+	test={}
+	if(mode == "Card"){
+		// SelectCard(qobj)
+		test = Select("Card.*","Card",qobj,InnerJoin("Card","CardSet","cardSetId", "id"))
+		console.log(test)
+	}
+	else if(mode == "Location"){
+		// SelectLocation(qobj)
+		test = Select("*","Location",qobj)
+		console.log(test);
+	}
+	else if(mode == "CardLocation"){
+		// SelectCardFromLocation(qobj)
+		test = Select(["Card.*", "quantity", "locationName"],"CardLocation",qobj,[InnerJoin("CardLocation","Location","locationId","id"),InnerJoin("CardLocation","Card","cardNumber","number"),InnerJoin("Card","CardSet","cardSetId","id")])
+		console.log(test)
+	}
+	else if(mode == "CardSet"){
+		// SelectCardSet(qobj)
+		test = Select("*","CardSet",qobj);
+		console.log(test)
+	}
+	connection.query(test,(err,rows,fields)=>{
+		if(err) console.log(err)
+
+		console.log(rows);
+		closeDB();
+	})
 
 }
 
@@ -379,7 +363,7 @@ program
 	.option('-l, --location <loc...>', 'filter by location.')
 	.option('-q, --quantity <number>', 'how many cards to Add, update, move, or remove')
 	.option('-i, --internet', 'For add Card only, uses internet to populate Card information')
-	.option('-f, --file', 'Use file to provide information')
+	.option('-f, --file <filename>', 'Use file to provide information')
 
 program.parse(process.argv);
 
@@ -389,9 +373,19 @@ const options = program.opts();
 //Search mode / Read / Done
 if(options.search && !options.edit && !options.add && !options.count && !options.move && !options.remove){
 	console.log("S",options.search)
+	
+	// qobj = OptionSwitch(options.search, options);
+	// console.log(qobj);
+	// if(qobj.fstr != "" && qobj.qarr != [])
+	// 	qobj.fstr = " WHERE " + qobj.fstr;
+	// GeneralSelect("Card.*", "Card", qobj, [InnerJoin("Card", "CardSet", "cardSetId", "id")]); // it works
+
 	if(options.search == "Card"|| options.search == "CardLocation" || options.search == "CardSet" || options.search == "Location")
+	
 		RunSearchQuery(options.search, options)
+	
 	else
+	
 		console.log("error: No table was specified.")
 }	
 //Edit mode / Update
@@ -404,11 +398,45 @@ else if(!options.search && !options.edit && options.add && !options.count && !op
 	console.log("A",options.add)
 	console.log(options)
 	//Add new Cards/ Card number required / Done
-	if(options.add == "Card")
+	if(options.add.toUpperCase() == "CARD")
 	{
+		if(options.file){
+
+			
+			console.log(options.file);
+			const reader = rl.createInterface({
+				input: fs.createReadStream(options.file)
+			});
+
+			var arr = [];
+			//read each line and split by comma into an array
+			reader.on("line", (row) => {
+				arr.push(row.split(','));
+			});
+
+			reader.on("close", () => {
+				arr.shift()
+				for(i=0;i<arr.length;i++){
+					temp = {
+						number: arr[i].shift(),
+						name: arr[i].shift(),
+						color: arr[i].shift(),
+						type: arr[i].shift(),
+						rarity: arr[i].shift(),
+					}
+					arr[i].unshift(temp)
+				}
+				console.log(arr);
+
+				// InsertCard(arr[0])
+				arr.forEach((data)=>{
+					InsertCard(data)
+				})
+			})
+		}
 		//Use Axios to add card to database
-		if(options.internet && options.cardNumber){
-			InsertCard2(options['cardNumber'][0])
+		else if(options.internet && options.cardNumber){
+			// InsertCard2(options['cardNumber'][0])
 		}
 		else{
 			values = {}
@@ -435,11 +463,11 @@ else if(!options.search && !options.edit && options.add && !options.count && !op
 				qarr = [values, values["number"].split("-")[0]]
 				// console.log(qarr)
 				InsertCard(qarr)
-			}//if
+			}//if card Number
 			else{
 				console.log("Error: Must provide card number")
 			}//else
-		}//else
+		}//else not internet available
 		
 	}//Card
 	//Add new Location/Need Location Name/ Testing
@@ -448,7 +476,7 @@ else if(!options.search && !options.edit && options.add && !options.count && !op
 		qarr = []
 		if(options.location){
 			values["locationName"] = options["location"][0];
-			InsertLocation([values])
+			// InsertLocation([values])
 		}
 		else{
 			console.log("Error: location was not given.")
@@ -464,7 +492,7 @@ else if(!options.search && !options.edit && options.add && !options.count && !op
 				values['name'] = options['boosterName'][0]
 
 			
-			InsertCardSet([values])
+			// InsertCardSet([values])
 		}
 		else{
 			console.log("Error: Must provide boosterCode/Cardset Number")
@@ -477,7 +505,7 @@ else if(!options.search && !options.edit && options.add && !options.count && !op
 			values['locationId'] = options['location'][0]
 			values['quantity'] = options['quantity'][0]
 
-			InsertCardIntoLocation([values])
+			// InsertCardIntoLocation([values])
 		}
 		else{
 			console.log("Error: Must provide card Number, location Id, and quantity. ")
