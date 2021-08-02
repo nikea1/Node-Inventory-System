@@ -73,7 +73,7 @@ RARITY = {
 
 
 // Commander + Axios + MySQL2
-
+//close DB connection
 function closeDB(){
 	connection.end((err)=>{
 		if(err){
@@ -84,12 +84,14 @@ function closeDB(){
 	})
 }
 
+//Create Inner Join String
 function InnerJoin(table1, table2, attr1, attr2){
 	if(!table1 || !table2 || !attr1 || !attr2)
 		return ""
 	return " JOIN "+table2+" ON "+table1+"."+attr1+" = "+table2+"."+attr2
 }
 
+//General Select Function. Where and Join arguments are optional
 function Select(col,from, where=null, join=null){
 	if(!col || !from)
 		return null;
@@ -100,37 +102,30 @@ function Select(col,from, where=null, join=null){
 	if(typeof join === 'string' || join instanceof String){
 		jstr = join;
 	}
-	//of join is an object
-	else if(join && join.table1 && join.table2 && join.attr1 && join.attr2){
-		jstr = " JOIN "+join.table2+" ON "+join.table1+"."+join.attr1+" = "+join.table2+"."+join.attr2;
-	}
-	//if join is a list of objects
+	//if join is a list of Stings
 	else if(Array.isArray(join)){
 		join.forEach((j)=>{
-			if(j && j.table1 && j.table2 && j.attr1 && j.attr2){
-				jstr += " JOIN "+j.table2+" ON "+j.table1+"."+j.attr1+" = "+j.table2+"."+j.attr2;
-			}
-			else if(typeof j === 'string' || j instanceof String){
+			if(typeof j === 'string' || j instanceof String){
 				jstr += j;
 			}
 			else{
-				console.log("Warning: Found an unprepared join object.")
+				console.log("Warning: Found an unprepared join string.")
 			}
 		})
 	}
 	
 	
 
-	qobj["sql"] = "SELECT ?? FROM ??"+jstr+(where && where.fstr ? where.fstr : "")
+	qobj["sql"] = "SELECT "+col+" FROM "+from+jstr+(where && where.fstr ? where.fstr : "")
 	qobj["values"] = []
-	qobj.values.push(col);
-	qobj.values.push(from);
+	// qobj.values.push(col);
+	// qobj.values.push(from);
 	if(where && where.qarr)
 		qobj.values = qobj.values.concat(where.qarr);
 	return qobj;
 	
 }
-
+//Count cards in inventory
 function CountCards(options){
 	sqlobj = {
 		sql: "SELECT SUM(quantity) FROM CardLocation "+
@@ -148,31 +143,14 @@ function CountCards(options){
 	})
 }
 
-function InsertCard(values){
-	sqlobj = {
-		sql: "INSERT INTO Card SET ?"+
-		" , cardSetId = (SELECT CardSet.id FROM CardSet WHERE CardSet.number =  ?)",
-		// sql: "INSERT INTO Card SET Card.number = ?, Card.name = ?, color = ?, type = ?, rarity = ?, CardsetId = (SELECT CardSet.id FROM CardSet WHERE CardSet.number =  ?)",
-		// sql: "INSERT INTO Card (Card.number, Card.name, color, type, rarity, cardSetId) VALUES ?",
-		values: values
-	}
-	console.log(sqlobj)
-	connection.query(sqlobj,(err,res,fields)=>{
-		if(err) console.log(err)
-
-		console.log(res);
-		closeDB();
-	})
-}
-
-function InsertCard2(cardNumber){
+function GetCardOnline(cardNumber){
 	var config = {
 	  method: 'get',
-	  // url: 'https://digimoncard.io/api-public/search.php?n=Agumon&desc=Reveal 5 cards&color=red&type=digimon&attribute=Vaccine&card=BT1-010&pack=BT01-03: Release Special Booster Ver.1.0&sort=name&sortdirection=desc&series=Digimon Card Game',
 	  url: 'https://digimoncard.io/api-public/search.php',
 	  headers: { },
 	  params:{card:cardNumber, series:"Digimon Card Game"}
 	};
+
 	axios(config)
 	.then(function (response) {
 		data = {
@@ -183,56 +161,35 @@ function InsertCard2(cardNumber){
 			rarity: RARITY[response.data[0].cardrarity] ? RARITY[response.data[0].cardrarity] : null,
 			
 		}
-		 console.log(data)
-		InsertCard([data, data['number'].split('-')[0]])
+		 console.log("My data",data)
+		 // return [data,data['number'].split('-')[0]]
+		connection.query(Insert("Card",[data, data['number'].split('-')[0]]),(err, rows)=>{
+			if(err){
+				console.log(err)
+				return;
+			}
+			console.log(rows)
+			closeDB()
+		})
+		//run query
 	})
 	.catch(function (error) {
 	  console.log(error);
-	  console.log("Connection")
+	  console.log("Connection failed, Check if internet is available and try again or enter data manually.")
+	  return null
 	});
 }
 
-function InsertCardSet(values){
-	sqlobj = {
-		sql: "INSERT INTO CardSet SET ?",
+//TODO: Test when new batch of cards show up
+function Insert(table, values){
+		sqlobj = {
+		sql: "INSERT INTO "+table+" SET ?" + (table.toUpperCase() == "CARD" ? " , cardSetId = (SELECT CardSet.id FROM CardSet WHERE CardSet.number =  ?)":""),
 		values: values
 	}
-	console.log(sqlobj)
-	connection.query(sqlobj,(err,res,fields)=>{
-		if(err) console.log(err)
-
-		console.log(res);
-		closeDB();
-	})
+	// console.log(sqlobj)
+	return sqlobj;
 }
 
-function InsertLocation(values){
-	sqlobj = {
-		sql: "INSERT INTO Location SET ?",
-		values:values
-	}
-	console.log(sqlobj)
-	connection.query(sqlobj,(err,res,fields)=>{
-		if(err) console.log(err)
-
-		console.log(res);
-		closeDB();
-	})
-}
-
-function InsertCardIntoLocation(values){
-	sqlobj = {
-		sql:"INSERT INTO CardLocation SET ?",
-		values: values
-	}
-	console.log(sqlobj)
-	connection.query(sqlobj,(err,res,fields)=>{
-		if(err) console.log(err)
-
-		console.log(res);
-		closeDB();
-	})
-}
 
 function helperOpts(queryString, query){
 	q=""
@@ -397,12 +354,10 @@ else if(!options.search && options.edit && !options.add && !options.count && !op
 else if(!options.search && !options.edit && options.add && !options.count && !options.move && !options.remove){
 	console.log("A",options.add)
 	console.log(options)
-	//Add new Cards/ Card number required / Done
-	if(options.add.toUpperCase() == "CARD")
-	{
-		if(options.file){
+	
+	//file input TODO: More testing, and implement limiters
+	if(options.file){
 
-			
 			console.log(options.file);
 			const reader = rl.createInterface({
 				input: fs.createReadStream(options.file)
@@ -426,91 +381,150 @@ else if(!options.search && !options.edit && options.add && !options.count && !op
 					}
 					arr[i].unshift(temp)
 				}
-				console.log(arr);
-
-				// InsertCard(arr[0])
-				arr.forEach((data)=>{
-					InsertCard(data)
-				})
-			})
-		}
-		//Use Axios to add card to database
-		else if(options.internet && options.cardNumber){
-			// InsertCard2(options['cardNumber'][0])
-		}
-		else{
-			values = {}
-			//User provided information
-			if(options.cardNumber){
-				qarr = []
-				for (let o in options){
-					switch(o){
-						case "cardNumber":
-							values["number"] = options[o][0]
-						break;
-						case "cardName":
-							values["name"] = options[o][0]
-							break;
-						case "type":
-						case "color":
-						case "rarity":
-							values[o] = options[o][0];
-							break;
-			
+				// console.log(arr);
 				
-					}//switch
-				}//for
-				qarr = [values, values["number"].split("-")[0]]
-				// console.log(qarr)
-				InsertCard(qarr)
-			}//if card Number
+				try{
+					count = 0;
+					ecount = 0;
+					(async ()=>{
+						for(i=0;i<arr.length;i++){
+
+							connection.query(Insert("Card", arr[i]), (err, rows)=>{
+								if(err){ 
+									console.log(err);
+									ecount++
+									return;
+								}
+								else{
+									console.log(rows)
+									count++;
+								}
+							})
+							
+							//run query
+						}
+					})()
+				}
+				catch(err){
+					console.log(ecount++)
+				}
+				finally{
+					// closeDB()
+					connection.end((err)=>{
+						if(err){
+							console.error("error connecting: "+err.stack);
+							return;
+						}
+						console.log("DB closing");
+						console.log(count+" rows inserted.")
+						console.log(ecount + " duplicates found")
+						console.log("End.")
+					})
+					
+				}
+			})
+	}
+	else{
+		if(options.add.toUpperCase() == "CARD"){
+			values = {}
+			qarr = []
+			if(options.cardNumber){
+				//use Digimon card game API to fill in data
+				if(options.internet){
+					//query runs in here VVV
+					GetCardOnline(options.cardNumber[0])
+					
+				}
+				//enter data based on user input
+				else{
+					
+					for (let o in options){
+						switch(o){
+							case "cardNumber":
+								values["number"] = options[o][0]
+								break;
+							case "cardName":
+								values["name"] = options[o][0]
+								break;
+							case "type":
+							case "color":
+							case "rarity":
+								values[o] = options[o][0];
+								break;
+						}//switch
+					}//for
+					qarr = [values, values["number"].split("-")[0]]
+					console.log(qarr)
+					connection.query(Insert("Card",qarr),(err,rows)=>{
+						if(err){
+							console.log(err)
+							return;
+						}
+						console.log(rows)
+						closeDB()
+					})
+				}
+				
+			}//card number
 			else{
-				console.log("Error: Must provide card number")
-			}//else
-		}//else not internet available
-		
-	}//Card
-	//Add new Location/Need Location Name/ Testing
-	else if(options.add == "Location"){
-		// values = {}
-		qarr = []
-		if(options.location){
-			values["locationName"] = options["location"][0];
-			// InsertLocation([values])
+				console.log("Error: Card Number is required.")
+			}
+		}//if Manual Card Input
+		else if(options.add.toUpperCase() == "CARDSET"){
+			if(options.boosterCode){
+				values ={
+					number:options.boosterCode[0],
+					name: (options.boosterName ? options.boosterName[0]:null)
+				}
+				connection.query(Insert("CardSet",values),(err,rows)=>{
+						if(err){
+							console.log(err)
+							return;
+						}
+						console.log(rows)
+						closeDB()
+				});
+			}
+			else{
+				console.log("Error: Card Set number is required.")
+			}
+		}//if manual CardSet input
+		else if(options.add.toUpperCase()== "LOCATION"){
+			if(options.location){
+				connection.query(Insert("Location", {locationName: options.location[0]}),(err,rows)=>{
+					if(err){
+						console.log(err)
+						return;
+					}
+					console.log(rows)
+					closeDB()
+				})
+			}
+			else{
+				console.log("Error: Location name needs to be set")
+			}
 		}
-		else{
-			console.log("Error: location was not given.")
-		}
-	}
-	//Add new CardSet /need Card Set number/ Testing
-	else if(options.add == "CardSet"){
-		
-		if(options.boosterNumber){
-			values["number"] = options['boosterCode'][0]
-		
-			if(options.boosterName)
-				values['name'] = options['boosterName'][0]
+		else if(options.add.toUpperCase()=="CARDLOCATION"){
+			if(options.cardNumber && options.location && options.quantity){
 
-			
-			// InsertCardSet([values])
-		}
-		else{
-			console.log("Error: Must provide boosterCode/Cardset Number")
-		}
-	}
-	//Add new Card into a Location / Need Card number, Location Id, quantity / Testing
-	else if(options.add == "CardLocation"){
-		if(options.cardNumber && options.location && options.quantity){
-			values['cardNumber'] = options['cardNumber'][0]
-			values['locationId'] = options['location'][0]
-			values['quantity'] = options['quantity'][0]
-
-			// InsertCardIntoLocation([values])
-		}
-		else{
-			console.log("Error: Must provide card Number, location Id, and quantity. ")
+				connection.query(Insert("CardLocation", {
+					cardNumber:options.cardNumber[0], 
+					locationId: options.location[0], 
+					quantity:options.quantity[0]}),(err,rows)=>{
+						if(err){
+							console.log(err)
+							return;
+						}
+						console.log(rows)
+						closeDB()
+				})
+			}
+			else{
+				console.log("Error: Need valid Location Id and valid Card Number and quantity of card to insert.")
+			}
 		}
 	}
+	
 }
 //Count mode / Read / Done
 else if(!options.search && !options.edit && !options.add && options.count && !options.move && !options.remove){
